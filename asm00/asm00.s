@@ -2,5 +2,6 @@ section .text
     global _start
 
 _start:
-    mov eax, 0  ; Retourner 0
-    ret
+    mov rax, 60      ; 
+    xor rdi, rdi     ; 
+    syscall          ; 
