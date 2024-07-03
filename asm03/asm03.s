@@ -1,51 +1,74 @@
-section .data
-    msg db "1337", 0
+global _start
 
 section .bss
-    num resb 8
+    input resb 2
+
+section .data
+    msg: db "1337", 01
+    .len: equ $ - msg
+    help: db "Take number as parameter, return 1337 if parameter is 42", 10
+    .lenHelp: equ $ - help
+    usage: db "USAGE : ./asm03 NUMBER", 10
+    .lenUsage: equ $ - usage
+
 
 section .text
-    global asm03
+_start:
+    
+    mov r13, [rsp]
+    cmp r13, 0x2
+    jne _error      ; we check if there is the attended parameter number
 
-asm03:
-    ; Vérifier le nombre d'arguments
-    mov rax, [rsp]   ; Nombre d'arguments
-    cmp rax, 2
-    jne return_1
+    mov rsi, rsp        
+    add rsi, 16        
+    mov rsi, [rsi]    
+    mov rdi, input   
+    mov rcx, 4      
+    rep movsb       ; we grab the first parameter 
 
-    ; Comparer l'argument avec 42
-    mov rdi, [rsp+8] ; Adresse de la chaîne de l'argument
-    call string_to_int
-    cmp rax, 42
-    je display_and_return_0
+    mov al, [input] ; we check if the first char is 4
+    cmp al, '4'
+    jne _not42
 
-return_1:
-    mov eax, 1
-    ret
+    mov al, [input + 1] ; we check if the second is 2
+    cmp al, '2'     
+    jne _not42
 
-display_and_return_0:
-    mov eax, 1
-    mov edi, 1
-    lea rsi, [rel msg]
-    mov edx, 4
+    mov al, [input + 2] ; we check if the last is the end of string char
+    cmp al, 0
+    jne _not42
+
+_exit:
+    mov rax, 1    ; if the parameter is 42, we end here, printing 1337 and exiting 0
+    mov rdi, 1
+    mov rsi, msg
+    mov rdx, msg.len
     syscall
 
-    mov eax, 0
-    ret
+    mov rax, 60
+    mov rdi, 0
+    syscall
 
-string_to_int:
-    ; Convertir la chaîne en entier
-    xor rax, rax    ; Clear RAX (result)
-    xor rcx, rcx    ; Clear RCX (multiplier)
-    xor rdx, rdx    ; Clear RDX (digit)
-convert_loop:
-    mov dl, byte [rdi + rcx]
-    test dl, dl
-    je end_convert
-    sub dl, '0'
-    imul rax, rax, 10
-    add rax, rdx
-    inc rcx
-    jmp convert_loop
-end_convert:
-    ret
+_not42:           ; if its not 42 we end here and exit 1 with no print
+    mov rax, 60
+    mov rdi, 1 
+    syscall
+
+_error:
+
+    mov rax, 1    ; print help message if there is an error
+    mov rdi, 1
+    mov rsi, help
+    mov rdx, help.lenHelp
+    syscall
+    
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, usage
+    mov rdx, usage.lenUsage
+    syscall
+
+
+    mov rax, 60
+    mov rdi, 1
+    syscall
