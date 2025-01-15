@@ -29,6 +29,12 @@ loop:
 foundNewline:
     dec rdx                       ; we get back to before the newline char
     movzx eax, byte [input + rdx] ; we mov the last byte of the input
+    
+    cmp al, '0'
+    jb _letter           
+    cmp al, '9'
+    ja _letter
+    
     sub al, '0'                   ; we sub 0 to get if its 0 or 1 
                                   ; last byte means the parity of the number
 
@@ -42,6 +48,10 @@ _odd:
 
 _even:
     mov rdi, 0
+    jmp _exit
+
+_letter:
+    mov rdi, 2
 _exit:
     mov rax, 60
     syscall
