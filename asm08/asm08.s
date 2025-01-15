@@ -1,145 +1,73 @@
 global _start 
 
-section .data
-    help: db "Convert a number to hex (-h) or binary (-b)", 10
-    .lenHelp: equ $ - help
-    usage: db "USAGE : ./asm08 -[h|b] NUMBER", 10
-    .lenUsage: equ $ - usage
-
-
 section .bss
     nb resb 32
-    string resb 32
-    conversion resb 1
+
+section .data
+    help: db "Add numbers from 0 to NUMBER-1", 10
+    .lenHelp: equ $ - help
+    usage: db "USAGE : ./asm08 NUMBER", 10
+    .lenUsage: equ $ - usage
 
 
 section .text
 _start:
 
     mov r13, [rsp] ; is there the attended arguments ?
-    cmp r13, 0x3
+    cmp r13, 0x2
     jne _error
 
     mov rsi, rsp
     add rsi, 16
     mov rsi, [rsi]
-    mov rdi, conversion
-    mov rcx, 4
-    rep movsb ; keeping the arg1
-
-    mov rsi, rsp
-    add rsi, 24
-    mov rsi, [rsi]
     mov rdi, nb
     mov rcx, 4
-    rep movsb ; keeping the number sent
+    rep movsb ; ; keeping the number sent
 
     xor rdi, rdi
     mov r8, 0
 
-hexOrBinary:
-    mov al, [conversion]
-    cmp al, '-'
-    jne _error
-
-    mov al, [conversion + 1] ; is the first argument -b ?
-    cmp al, 'b'
-    je ._isBinary
-    
-    cmp al, 'h' ; its not -b so
-    je ._isHex ; is the first argument -h ?
-    jne _error ; its none of them -> exit
-    ._isBinary:
-        mov byte [conversion], 1  ; is binary
-        xor rdi, rdi              ; conversion = 1 for binary
-        jmp convert   
-    ._isHex:
-        mov byte [conversion], 0  ; conversion = 0 for hex
-        xor rdi, rdi
-        jmp convert
-
-convert:
-    mov al, [nb + rdi] ; cause the number is in "string mode" we swap it to "decimal mode"
+convert: ; cause the number is in "string mode" we swap it to "decimal mode"
+    mov al, [nb + rdi] 
     cmp al, 0
-    je doneConvert
+    je done
 
     cmp rax, '0' ; we check if its a number or not, which means between char 0 (48) and char 9 (57)
+
     jl _error
 
     cmp rax, '9'
     jg _error
 
-    sub rax, 48 ; we sub the value for char 0 (48) to get its decimal form
-    imul r8, 10 ; imul to write number from left to right 
+    sub rax, 48  ;we sub the value for char 0 (48) to get its decimal form
+    imul r8, 10  ; ; imul to write number from left to right
     add r8, rax
     
     inc rdi
     jmp convert
 
-doneConvert:
-
-    mov al, [conversion] ; since conversion to decimal is done, we need to convert it in 
-    cmp al, 0            ; hex or binary, the choice change changes the value of rcx to 
-    je ._convertHex      ; divide the number by rcx
-    jne ._convertBin
-    ._convertHex:
-        mov rcx, 16      ; if its hex we need to divide by 16
-        jmp ._choosen
-    ._convertBin:
-        mov rcx, 2       ; if its binary we need to divide by 2
-        jmp ._choosen
-    ._choosen:
-        mov rax, r8      ; we move the decimal value to rax, need for the div instruction
-
-loop:
-    xor rdx, rdx         ; we xor rdx cause we dont need it and div takes [rdx:rax] as input
-    
-    div rcx
-
-    push rdx             ; we push the value to get it back later in the right order
-    
-    inc r10
-    cmp rax, 0           ; unless rax (quotient) is 0 we continue
-    je done
-
-    jmp loop
-
 done:
-    mov r13, r10
-    inc r13 ; keep length + 1 for string + 0
-    xor rdi, rdi
-    mov rdi, string
+    cmp r8, 0 ; if its 0 we can already end since there is currently 0 in rax
+    je _end
     
-addToString:
+    mov r9, 0 ; otherwise, we prepare for adding every numbers
+    mov rax, 0 ; rax = result
+    dec r8     ; r8 = last number
+               ; r9 = current number
+loop:
+    add rax, r9
     
-    pop r11
-    cmp r11, 10     ; we need to differentiate between letters and numbers for hex
-    jb ._dec
-    jae ._ascii
+    cmp r9, r8
+    je _end
 
-    ._dec:             ; if its between 0 and 9, we can write a number by adding the value for '0'
-        add r11, '0'
-        jmp ._store
-    ._ascii:
-        add r11, 87    ; if its above or equal 10, its a letter, so we need to add (a-10) which is 87
-        jmp ._store
-    ._store:
-      mov [rdi], r11    ; we store the new value which are now ascii decimal to a string
-      inc rdi
-      dec r10
-      cmp r10, 0
-      je _end
-      jmp addToString
-  
+    inc r9
+    jmp loop
 
 
 _end:
-    mov byte [rdi], 0 ; we add end of string char
-    
-    mov rsi, string ; we print the string which contains the conversion
-    mov rdi, 1
+    call std__to_string ; we call our print function
     mov rax, 1
-    mov rdx, r13    ; we kept the length earlier for here
+    mov rdi, 1
     syscall
 
     mov rax, 60
@@ -160,8 +88,66 @@ _error:
     mov rdx, usage.lenUsage
     syscall
 
+
     mov rax, 60
     mov rdi, 1
     syscall
 
+std__to_string:
+    ; ----------------------------------------------------------------------
+    ;    TAKES
+    ;        ||------> 1. RAX => Number
+    ;                  2. RSI => Output string
+    ;
+    ;    GIVES
+    ;        ||------> 1. RSI = Number as a string
+    ;                  2. RDX = Length of the string (number of digits)
+    ;
+    ; ----------------------------------------------------------------------
 
+    push rsi              ; Keep the output string pointer on the stack for later
+    push rax              ; Keep the value of RAX on the stack because the next loop will change its value
+
+    mov rdi, 1            ; For keeping the number of digits in the original number
+    mov rcx, 1            ; For keeping the divisor
+    mov rbx, 10           ; For dividing the number by ten in each iteration 
+    .get_divisor:
+        xor rdx, rdx
+        div rbx           ; Reduce the RAX by one digit
+        
+        cmp rax, 0        ; Compare RAX with zero
+        je ._after         ; Break the loop if equal
+        imul rcx, 10      ; Otherwise increase the divisor (RCX) ten times
+        inc rdi           ; Increment number of digits as well (RDI)
+        jmp .get_divisor   ; Unconditional jump to the first instruction of the 'loop'
+
+
+    ._after:
+        pop rax           ; Get back the value of RAX from the stack
+        push rdi          ; Put the number of digits on the stack for later
+
+    .to_string:
+        xor rdx, rdx
+        div rcx           ; Divide the number (RAX) by the divisor to get the first digit from the left
+
+        add al, '0'       ; Add the base (48) to the digit because we want to store an ASCII string
+        mov [rsi], al     ; Move the value into the string
+        inc rsi           ; Increment the pointer to the next byte
+
+        push rdx          ; Push the remaining part of the number onto the stack
+        xor rdx, rdx      
+        mov rax, rcx     
+        mov rbx, 10       
+        div rbx           ; Reduce the divisor (RCX) ten times
+        mov rcx, rax      ; Put the new divisor back into (RCX)
+
+        pop rax           ; Pop the top the stack into (RAX). It's the remaining part of the number
+        
+        cmp rcx, 0        ; See if the divisor has become zero
+        jg .to_string      ; If not, repeat the same process
+
+    pop rdx               ; Pop the top of the stack into (RDX). It's the value of (RDI): the number of digits in the original number
+    pop rsi               ; Bring (RSI) to the beginning of the string before returning as well
+    ret
+
+    
